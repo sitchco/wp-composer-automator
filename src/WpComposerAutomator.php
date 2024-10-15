@@ -14,6 +14,7 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
     private const PLUGINS_PRO_DIR_NAME = 'plugins-pro';
     private const PLUGINS_DIR_NAME = 'plugins';
     private const AUTOLOADER_TEMPLATE = 'autoloader.php';
+    private const MULOADER_TEMPLATE = 'mu-loader.php';
     private const WP_CONTENT_DIR_NAME = 'wp-content';
 
     /** @var Composer */
@@ -68,6 +69,30 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
 
         if (! copy($sourceLoaderFile, $loaderFilePath)) {
             $event->getIO()->write("Failed to copy autoloader.php to mu-plugins.");
+            return;
+        }
+        $items = scandir($muPluginsDir);
+        if ($items === false) {
+            return;
+        }
+
+        $subdirectories = array_filter($items, function ($item) use ($muPluginsDir) {
+            return $item !== '.' && $item !== '..' && is_dir($muPluginsDir . '/' . $item);
+        });
+
+        if (!empty($subdirectories)) {
+            $muLoaderTemplateFile = __DIR__ . '/../' . self::MULOADER_TEMPLATE;
+
+            if (! file_exists($muLoaderTemplateFile)) {
+                return;
+            }
+
+            $muLoaderContent = file_get_contents($muLoaderTemplateFile);
+            if ($muLoaderContent === false) {
+                return;
+            }
+
+            file_put_contents($loaderFilePath, PHP_EOL . $muLoaderContent, FILE_APPEND);
         }
     }
 

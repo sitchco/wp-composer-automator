@@ -12,7 +12,3 @@ if (! defined('USE_COMPOSER_AUTOLOADER') && file_exists($autoloader)) {
     define('USE_COMPOSER_AUTOLOADER', true);
     require_once $autoloader;
 }
-
-if (class_exists('\Roots\Bedrock\Autoloader')) {
-    new \Roots\Bedrock\Autoloader();
-}
