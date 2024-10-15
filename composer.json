@@ -1,0 +1,19 @@
+{
+    "name": "sitchco/wp-composer-automator",
+    "type": "composer-plugin",
+    "require": {
+        "composer-plugin-api": "^2.0",
+        "roots/bedrock-autoloader": "*"
+    },
+    "require-dev": {
+        "composer/composer": "^2.0"
+    },
+    "extra": {
+        "class": "Sitchco\\Composer\\WpComposerAutomator"
+    },
+    "autoload": {
+        "classmap": [
+            "src/"
+        ]
+    }
+}
