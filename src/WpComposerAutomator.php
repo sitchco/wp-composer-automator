@@ -15,6 +15,7 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
     private const PLUGINS_DIR_NAME = 'plugins';
     private const AUTOLOADER_TEMPLATE = 'autoloader.php';
     private const MULOADER_TEMPLATE = 'mu-loader.php';
+    private const PLUGIN_ACTIVATION_TEMPLATE = 'plugin-activation.php';
     private const WP_CONTENT_DIR_NAME = 'wp-content';
 
     /** @var Composer */
@@ -94,6 +95,8 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
 
             file_put_contents($loaderFilePath, PHP_EOL . $muLoaderContent, FILE_APPEND);
         }
+
+        $this->generatePluginActivation($event);
     }
 
     /**
@@ -183,6 +186,84 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
         }
 
         return true;
+    }
+
+    /**
+     * Generates or removes the plugin activation mu-plugin based on composer.json rules.
+     *
+     * Reads extra.plugin-activation from the root package, resolves Composer package names
+     * to WordPress plugin directory names, injects rules into the template, and writes the
+     * generated mu-plugin. Deletes the generated file if no rules are configured.
+     *
+     * @param Event $event The Composer event for IO access and repository access.
+     */
+    private function generatePluginActivation(Event $event): void
+    {
+        $wpContentPath = $this->getWpContentPath();
+        if (! $wpContentPath) {
+            return;
+        }
+
+        $muPluginsDir = $wpContentPath . '/' . self::MU_PLUGINS_DIR_NAME;
+        $generatedFile = $muPluginsDir . '/' . self::PLUGIN_ACTIVATION_TEMPLATE;
+
+        $extra = $event->getComposer()->getPackage()->getExtra();
+        $activationRules = $extra['plugin-activation'] ?? [];
+
+        if (empty($activationRules)) {
+            if (file_exists($generatedFile)) {
+                @unlink($generatedFile);
+            }
+
+            return;
+        }
+
+        $localRepo = $event->getComposer()->getRepositoryManager()->getLocalRepository();
+        $installationManager = $event->getComposer()->getInstallationManager();
+
+        $resolvedRules = [];
+        foreach ($activationRules as $packageName => $envRules) {
+            $package = $localRepo->findPackage($packageName, '*');
+            if (! $package) {
+                $event->getIO()->write("Plugin activation: skipping {$packageName} (not installed)");
+                continue;
+            }
+
+            $type = $package->getType();
+            if ($type !== 'wordpress-plugin') {
+                $event->getIO()->write("Plugin activation: skipping {$packageName} (type: {$type}, not a wordpress-plugin)");
+                continue;
+            }
+
+            $installPath = $installationManager->getInstallPath($package);
+            $directory = basename($installPath);
+            $resolvedRules[$directory] = $envRules;
+        }
+
+        if (empty($resolvedRules)) {
+            if (file_exists($generatedFile)) {
+                @unlink($generatedFile);
+            }
+
+            return;
+        }
+
+        $templatePath = __DIR__ . '/../' . self::PLUGIN_ACTIVATION_TEMPLATE;
+        $template = file_get_contents($templatePath);
+
+        $exported = var_export($resolvedRules, true);
+        $exported = str_replace(['array (', ')'], ['[', ']'], $exported);
+
+        $content = str_replace('/* __RULES_PLACEHOLDER__ */ []', $exported, $template);
+
+        $this->ensureDirectoryExists($muPluginsDir, $event);
+
+        file_put_contents($generatedFile, $content);
+
+        $event->getIO()->write("Plugin activation: generated " . self::PLUGIN_ACTIVATION_TEMPLATE . " with " . count($resolvedRules) . " rule(s)");
+        foreach ($resolvedRules as $directory => $envRules) {
+            $event->getIO()->write("  - {$directory}");
+        }
     }
 
     /**
