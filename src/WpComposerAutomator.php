@@ -46,10 +46,8 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
      */
     public function onPostAutoloadDump(Event $event): void
     {
-        $wpContentPath = $this->getWpContentPath();
+        $wpContentPath = $this->requireWpContentPath($event);
         if (! $wpContentPath) {
-            $event->getIO()->write("Not inside a wp-content directory.");
-
             return;
         }
 
@@ -96,7 +94,7 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
             file_put_contents($loaderFilePath, PHP_EOL . $muLoaderContent, FILE_APPEND);
         }
 
-        $this->generatePluginActivation($event);
+        $this->generatePluginActivation($event, $wpContentPath);
     }
 
     /**
@@ -106,19 +104,7 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
      */
     public function onPreInstall(Event $event): void
     {
-        $wpContentPath = $this->getWpContentPath();
-        if (! $wpContentPath) {
-            $event->getIO()->write("Not inside a wp-content directory.");
-
-            return;
-        }
-
-        $pluginsProDir = $wpContentPath . '/' . self::PLUGINS_PRO_DIR_NAME;
-        $pluginsDir = $wpContentPath . '/' . self::PLUGINS_DIR_NAME;
-
-        if ($this->directoriesExist([$pluginsProDir, $pluginsDir])) {
-            $this->removeConflictingPlugins($pluginsProDir, $pluginsDir, $event);
-        }
+        $this->withPluginDirs($event, $this->removeConflictingPlugins(...));
     }
 
     /**
@@ -128,19 +114,7 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
      */
     public function onPostInstall(Event $event): void
     {
-        $wpContentPath = $this->getWpContentPath();
-        if (! $wpContentPath) {
-            $event->getIO()->write("Not inside a wp-content directory.");
-
-            return;
-        }
-
-        $pluginsProDir = $wpContentPath . '/' . self::PLUGINS_PRO_DIR_NAME;
-        $pluginsDir = $wpContentPath . '/' . self::PLUGINS_DIR_NAME;
-
-        if ($this->directoriesExist([$pluginsProDir, $pluginsDir])) {
-            $this->copyPlugins($pluginsProDir, $pluginsDir, $event);
-        }
+        $this->withPluginDirs($event, $this->copyPlugins(...));
     }
 
     public function deactivate(Composer $composer, IOInterface $io): void
@@ -165,6 +139,31 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
         }
 
         return null;
+    }
+
+    private function requireWpContentPath(Event $event): ?string
+    {
+        $wpContentPath = $this->getWpContentPath();
+        if (! $wpContentPath) {
+            $event->getIO()->write("Not inside a wp-content directory.");
+        }
+
+        return $wpContentPath;
+    }
+
+    private function withPluginDirs(Event $event, callable $callback): void
+    {
+        $wpContentPath = $this->requireWpContentPath($event);
+        if (! $wpContentPath) {
+            return;
+        }
+
+        $pluginsProDir = $wpContentPath . '/' . self::PLUGINS_PRO_DIR_NAME;
+        $pluginsDir = $wpContentPath . '/' . self::PLUGINS_DIR_NAME;
+
+        if ($this->directoriesExist([$pluginsProDir, $pluginsDir])) {
+            $callback($pluginsProDir, $pluginsDir, $event);
+        }
     }
 
     /**
@@ -197,26 +196,12 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
      *
      * @param Event $event The Composer event for IO access and repository access.
      */
-    private function generatePluginActivation(Event $event): void
+    private function generatePluginActivation(Event $event, string $wpContentPath): void
     {
-        $wpContentPath = $this->getWpContentPath();
-        if (! $wpContentPath) {
-            return;
-        }
-
         $muPluginsDir = $wpContentPath . '/' . self::MU_PLUGINS_DIR_NAME;
         $generatedFile = $muPluginsDir . '/' . self::PLUGIN_ACTIVATION_TEMPLATE;
 
-        $extra = $event->getComposer()->getPackage()->getExtra();
-        $activationRules = $extra['plugin-activation'] ?? [];
-
-        if (empty($activationRules)) {
-            if (file_exists($generatedFile)) {
-                @unlink($generatedFile);
-            }
-
-            return;
-        }
+        $activationRules = $event->getComposer()->getPackage()->getExtra()['plugin-activation'] ?? [];
 
         $localRepo = $event->getComposer()->getRepositoryManager()->getLocalRepository();
         $installationManager = $event->getComposer()->getInstallationManager();
@@ -275,13 +260,7 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
      */
     private function directoriesExist(array $directories): bool
     {
-        foreach ($directories as $dir) {
-            if (! is_dir($dir)) {
-                return false;
-            }
-        }
-
-        return true;
+        return ! in_array(false, array_map(is_dir(...), $directories), true);
     }
 
     /**

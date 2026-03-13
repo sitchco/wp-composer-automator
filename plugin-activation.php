@@ -13,17 +13,10 @@ if (! defined('ABSPATH')) {
 }
 
 $rules = /* __RULES_PLACEHOLDER__ */ [];
+$transientKey = static fn(string $dir): string => "plugin_activation_bypass_{$dir}";
 
-add_action('admin_init', function () use ($rules) {
-    if (is_multisite()) {
-        return;
-    }
-
-    if (! defined('WP_ENVIRONMENT_TYPE')) {
-        return;
-    }
-
-    if (empty($rules)) {
+add_action('admin_init', function () use ($rules, $transientKey) {
+    if (is_multisite() || ! defined('WP_ENVIRONMENT_TYPE') || empty($rules)) {
         return;
     }
 
@@ -33,15 +26,9 @@ add_action('admin_init', function () use ($rules) {
         require_once ABSPATH . 'wp-admin/includes/plugin.php';
     }
 
-    $allPlugins = get_plugins();
-    $directoryMap = [];
-    foreach (array_keys($allPlugins) as $basename) {
-        $dir = dirname($basename);
-        if ($dir === '.') {
-            continue;
-        }
-        $directoryMap[$dir] = $basename;
-    }
+    $basenames = array_keys(get_plugins());
+    $directoryMap = array_combine(array_map(dirname(...), $basenames), $basenames);
+    unset($directoryMap['.']);
 
     foreach ($rules as $directory => $envRules) {
         if (! isset($directoryMap[$directory])) {
@@ -50,15 +37,12 @@ add_action('admin_init', function () use ($rules) {
 
         $basename = $directoryMap[$directory];
 
-        if (isset($envRules[$environment])) {
-            $rule = $envRules[$environment];
-        } elseif (isset($envRules['*'])) {
-            $rule = $envRules['*'];
-        } else {
+        $rule = $envRules[$environment] ?? $envRules['*'] ?? null;
+        if ($rule === null) {
             continue;
         }
 
-        if (get_transient('plugin_activation_bypass_' . $directory)) {
+        if (get_transient($transientKey($directory))) {
             continue;
         }
 
@@ -70,24 +54,13 @@ add_action('admin_init', function () use ($rules) {
     }
 });
 
-add_action('activated_plugin', function ($basename) use ($rules) {
+$bypassCallback = function ($basename) use ($rules, $transientKey) {
     $directory = dirname($basename);
-    if ($directory === '.') {
+    if ($directory === '.' || ! isset($rules[$directory])) {
         return;
     }
-    if (! isset($rules[$directory])) {
-        return;
-    }
-    set_transient('plugin_activation_bypass_' . $directory, 1, HOUR_IN_SECONDS);
-});
+    set_transient($transientKey($directory), 1, HOUR_IN_SECONDS);
+};
 
-add_action('deactivated_plugin', function ($basename) use ($rules) {
-    $directory = dirname($basename);
-    if ($directory === '.') {
-        return;
-    }
-    if (! isset($rules[$directory])) {
-        return;
-    }
-    set_transient('plugin_activation_bypass_' . $directory, 1, HOUR_IN_SECONDS);
-});
+add_action('activated_plugin', $bypassCallback);
+add_action('deactivated_plugin', $bypassCallback);
