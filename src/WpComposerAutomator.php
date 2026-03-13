@@ -227,23 +227,46 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
 
         if (empty($resolvedRules)) {
             if (file_exists($generatedFile)) {
-                @unlink($generatedFile);
+                if (! unlink($generatedFile)) {
+                    $event->getIO()->write("Failed to delete file: {$generatedFile}");
+                }
             }
 
             return;
         }
 
         $templatePath = __DIR__ . '/../' . self::PLUGIN_ACTIVATION_TEMPLATE;
+
+        if (! file_exists($templatePath)) {
+            $event->getIO()->write("Plugin activation: template file does not exist: {$templatePath}");
+
+            return;
+        }
+
         $template = file_get_contents($templatePath);
+        if ($template === false) {
+            $event->getIO()->write("Plugin activation: failed to read template file: {$templatePath}");
+
+            return;
+        }
 
         $exported = var_export($resolvedRules, true);
         $exported = str_replace(['array (', ')'], ['[', ']'], $exported);
 
-        $content = str_replace('/* __RULES_PLACEHOLDER__ */ []', $exported, $template);
+        $placeholder = '/* __RULES_PLACEHOLDER__ */ []';
+        $content = str_replace($placeholder, $exported, $template);
+
+        if ($content === $template) {
+            $event->getIO()->write("Plugin activation: placeholder not found in template, generated file may be invalid");
+        }
 
         $this->ensureDirectoryExists($muPluginsDir, $event);
 
-        file_put_contents($generatedFile, $content);
+        if (file_put_contents($generatedFile, $content) === false) {
+            $event->getIO()->write("Plugin activation: failed to write {$generatedFile}");
+
+            return;
+        }
 
         $event->getIO()->write("Plugin activation: generated " . self::PLUGIN_ACTIVATION_TEMPLATE . " with " . count($resolvedRules) . " rule(s)");
         foreach ($resolvedRules as $directory => $envRules) {

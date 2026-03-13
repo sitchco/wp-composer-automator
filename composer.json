@@ -2,6 +2,7 @@
     "name": "sitchco/wp-composer-automator",
     "type": "composer-plugin",
     "require": {
+        "php": ">=8.2",
         "composer-plugin-api": "^2.0",
         "roots/bedrock-autoloader": "*"
     },

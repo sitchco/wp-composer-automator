@@ -25,7 +25,7 @@ plugins.
 
 ### Prerequisites
 
-- **PHP**: Version 7.2 or higher.
+- **PHP**: Version 8.2 or higher.
 - **Composer**: Ensure you have [Composer](https://getcomposer.org/) installed globally.
 - **WordPress**: A WordPress installation with the `wp-content` directory accessible.
 

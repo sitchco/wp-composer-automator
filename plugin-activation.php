@@ -13,10 +13,10 @@ if (! defined('ABSPATH')) {
 }
 
 $rules = /* __RULES_PLACEHOLDER__ */ [];
-$transientKey = static fn(string $dir): string => "plugin_activation_bypass_{$dir}";
+$transientKey = 'plugin_activation_bypass';
 
 add_action('admin_init', function () use ($rules, $transientKey) {
-    if (is_multisite() || ! defined('WP_ENVIRONMENT_TYPE') || empty($rules)) {
+    if (is_multisite() || ! defined('WP_ENVIRONMENT_TYPE') || empty($rules) || get_transient($transientKey)) {
         return;
     }
 
@@ -42,10 +42,6 @@ add_action('admin_init', function () use ($rules, $transientKey) {
             continue;
         }
 
-        if (get_transient($transientKey($directory))) {
-            continue;
-        }
-
         if ($rule === true && ! is_plugin_active($basename)) {
             activate_plugin($basename);
         } elseif ($rule === false && is_plugin_active($basename)) {
@@ -59,7 +55,7 @@ $bypassCallback = function ($basename) use ($rules, $transientKey) {
     if ($directory === '.' || ! isset($rules[$directory])) {
         return;
     }
-    set_transient($transientKey($directory), 1, HOUR_IN_SECONDS);
+    set_transient($transientKey, 1, HOUR_IN_SECONDS);
 };
 
 add_action('activated_plugin', $bypassCallback);
