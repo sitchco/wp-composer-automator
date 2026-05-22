@@ -17,6 +17,8 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
     private const MULOADER_TEMPLATE = 'mu-loader.php';
     private const PLUGIN_ACTIVATION_TEMPLATE = 'plugin-activation.php';
     private const WP_CONTENT_DIR_NAME = 'wp-content';
+    private const MDB_PRO_PLUGIN_SLUG = 'wp-migrate-db-pro';
+    private const MDB_PRO_COMPATIBILITY_FILE = 'wp-migrate-db-pro-compatibility.php';
 
     /** @var Composer */
     private $composer;
@@ -115,6 +117,7 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
     public function onPostInstall(Event $event): void
     {
         $this->withPluginDirs($event, $this->copyPlugins(...));
+        $this->copyMdbProCompatibility($event);
     }
 
     public function deactivate(Composer $composer, IOInterface $io): void
@@ -325,6 +328,44 @@ class WpComposerAutomator implements PluginInterface, EventSubscriberInterface
                 $this->copyDirectory($source, $destination, $event);
             }
         }
+    }
+
+    /**
+     * Copies the wp-migrate-db-pro compatibility MU plugin into mu-plugins/.
+     *
+     * MDB Pro normally writes this file on first dashboard load; doing it at
+     * composer install time guarantees it ships in the deploy build artifact.
+     * No-op when MDB Pro is not installed on this project.
+     */
+    private function copyMdbProCompatibility(Event $event): void
+    {
+        $wpContentPath = $this->requireWpContentPath($event);
+        if (! $wpContentPath) {
+            return;
+        }
+
+        $source = $wpContentPath
+            . '/' . self::PLUGINS_DIR_NAME
+            . '/' . self::MDB_PRO_PLUGIN_SLUG
+            . '/compatibility/' . self::MDB_PRO_COMPATIBILITY_FILE;
+
+        if (! is_file($source)) {
+            return;
+        }
+
+        $muPluginsDir = $wpContentPath . '/' . self::MU_PLUGINS_DIR_NAME;
+        if (! $this->ensureDirectoryExists($muPluginsDir, $event)) {
+            return;
+        }
+
+        $destination = $muPluginsDir . '/' . self::MDB_PRO_COMPATIBILITY_FILE;
+
+        if (! copy($source, $destination)) {
+            $event->getIO()->write("Failed to copy {$source} to {$destination}");
+            return;
+        }
+
+        $event->getIO()->write("Copied " . self::MDB_PRO_COMPATIBILITY_FILE . " to mu-plugins/");
     }
 
     /**
