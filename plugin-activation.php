@@ -20,14 +20,21 @@ add_action('admin_init', function () use ($rules, $transientKey) {
         return;
     }
 
-    // Do not enforce during a WP Migrate compatibility-mode request. WP Migrate
-    // filters `option_active_plugins` down to itself during a migration, so any
-    // activate_plugin()/deactivate_plugins() call here would read that reduced
-    // list via get_option() and persist it — silently deactivating every other
-    // plugin. Mirrors Compatibility::wpmdbc_is_compatibility_mode_request().
-    $action = isset($_REQUEST['action']) && is_string($_REQUEST['action']) ? $_REQUEST['action'] : '';
-    $requestUri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
-    if (str_contains($action, 'wpmdb') || str_contains($requestUri, 'mdb-api/v1/')) {
+    // Only converge plugin state on an interactive wp-admin request. admin_init
+    // also fires on background requests (notably admin-ajax.php), where another
+    // plugin may be filtering `option_active_plugins` — e.g. WP Migrate's
+    // compatibility mode reduces it to itself during a migration. Because
+    // activate_plugin()/deactivate_plugins() read that filtered list via
+    // get_option() and write it straight back, enforcing here would silently
+    // deactivate every other plugin. Enforcement is opportunistic and only needs
+    // a real admin page load, so skip every non-interactive context.
+    if (
+        wp_doing_ajax()
+        || wp_doing_cron()
+        || (defined('REST_REQUEST') && REST_REQUEST)
+        || (defined('WP_CLI') && WP_CLI)
+        || (defined('XMLRPC_REQUEST') && XMLRPC_REQUEST)
+    ) {
         return;
     }
 
